@@ -43,15 +43,30 @@ def make_event(
     return evt
 
 
-def test_invite_admin_rejected():
-    """Verify that attempting to invite a user with role ADMIN returns HTTP 400."""
-    with patch.object(handler, "get_effective_role", return_value=({"workspaceId": "ws-1"}, "ADMIN")):
-        evt = make_event("POST", "/team", body={"email": "some@example.com", "role": "ADMIN"}, groups=["Admin"])
+def test_invite_admin_success():
+    """Verify that an ADMIN can invite another user with role ADMIN (HTTP 201)."""
+    mock_table = MagicMock()
+    mock_cognito = MagicMock()
+    mock_cognito.admin_create_user.return_value = {
+        "User": {
+            "Username": "newadmin@example.com",
+            "Attributes": [{"Name": "sub", "Value": "user-sub-admin"}],
+        }
+    }
+    with patch.object(handler, "get_effective_role", return_value=({"workspaceId": "ws-1"}, "ADMIN")), \
+         patch.object(handler, "table", mock_table), \
+         patch.object(handler, "cognito", mock_cognito), \
+         patch.object(handler, "USER_POOL_ID", "pool-123"), \
+         patch.object(handler, "create_activity"):
+        evt = make_event("POST", "/team", body={"email": "newadmin@example.com", "role": "ADMIN"}, groups=["Admin"])
         res = handler.handle_invite_user(evt)
-        assert res["statusCode"] == 400, f"Expected 400, got {res['statusCode']}"
+        assert res["statusCode"] == 201, f"Expected 201, got {res['statusCode']}"
         body = json.loads(res["body"])
-        assert "ADMIN cannot be an invitation role" in body["message"]
-        print("[PASS] test_invite_admin_rejected")
+        assert "Invitation sent successfully" in body["message"]
+        mock_cognito.admin_add_user_to_group.assert_called_with(
+            UserPoolId="pool-123", Username="user-sub-admin", GroupName="Admin"
+        )
+        print("[PASS] test_invite_admin_success")
 
 
 def test_invite_manager_forbidden():
@@ -177,27 +192,6 @@ def test_accept_invitation_matching_email():
         print("[PASS] test_accept_invitation_matching_email")
 
 
-def test_create_workspace_assigns_admin():
-    """Verify that POST /workspaces creates a new workspace and assigns role ADMIN to the creator."""
-    mock_table = MagicMock()
-    mock_cognito = MagicMock()
-
-    with patch.object(handler, "table", mock_table), \
-         patch.object(handler, "cognito", mock_cognito), \
-         patch.object(handler, "USER_POOL_ID", "pool-123"), \
-         patch.object(handler, "create_activity"):
-        evt = make_event("POST", "/workspaces", body={"name": "My New Company"}, sub="user-owner", email="owner@company.com")
-        res = handler.handle_create_workspace(evt)
-        assert res["statusCode"] == 201, f"Expected 201, got {res['statusCode']}"
-        body = json.loads(res["body"])
-        assert body["role"] == "ADMIN"
-        assert "workspaceId" in body
-        mock_cognito.admin_add_user_to_group.assert_called_with(
-            UserPoolId="pool-123", Username="user-owner", GroupName="Admin"
-        )
-        print("[PASS] test_create_workspace_assigns_admin")
-
-
 def test_get_team_returns_only_workspace_members():
     """Verify GET /team queries DynamoDB for workspace members and excludes non-workspace users."""
     mock_table = MagicMock()
@@ -210,7 +204,7 @@ def test_get_team_returns_only_workspace_members():
                 "PK": "WORKSPACE#ws-123",
                 "SK": "MEMBER#user-admin",
                 "userId": "user-admin",
-                "email": "admin@test.com",
+                "email": "workspace_admin@example.com",
                 "role": "ADMIN",
                 "isOwner": True,
             },
@@ -218,7 +212,7 @@ def test_get_team_returns_only_workspace_members():
                 "PK": "WORKSPACE#ws-123",
                 "SK": "MEMBER#user-manager",
                 "userId": "user-manager",
-                "email": "manager@test.com",
+                "email": "workspace_manager@example.com",
                 "role": "MANAGER",
                 "isOwner": False,
             },
@@ -230,16 +224,16 @@ def test_get_team_returns_only_workspace_members():
     with patch.object(handler, "get_effective_role", return_value=({"workspaceId": "ws-123"}, "ADMIN")), \
          patch.object(handler, "table", mock_table), \
          patch.object(handler, "cognito", mock_cognito):
-        evt = make_event("GET", "/team", sub="user-admin", email="admin@test.com", groups=["Admin"])
+        evt = make_event("GET", "/team", sub="user-admin", email="workspace_admin@example.com", groups=["Admin"])
         res = handler.handle_get_team(evt)
         assert res["statusCode"] == 200, f"Expected 200, got {res['statusCode']}"
         body = json.loads(res["body"])
         members = body["members"]
         assert len(members) == 2, f"Expected 2 members, got {len(members)}"
         emails = [m["email"] for m in members]
-        assert "admin@test.com" in emails
-        assert "manager@test.com" in emails
-        assert "teamgateadmin@gmail.com" not in emails
+        assert "workspace_admin@example.com" in emails
+        assert "workspace_manager@example.com" in emails
+        assert "teamgate@gmail.com" not in emails
         print("[PASS] test_get_team_returns_only_workspace_members")
 
 
@@ -350,28 +344,62 @@ def test_invited_manager_remains_manager():
         print("[PASS] test_invited_manager_remains_manager")
 
 
+def test_invite_employee_forbidden():
+    """Verify that an EMPLOYEE cannot invite users (HTTP 403)."""
+    with patch.object(handler, "get_effective_role", return_value=({"workspaceId": "ws-1"}, "EMPLOYEE")):
+        evt = make_event("POST", "/team", body={"email": "some@example.com", "role": "EMPLOYEE"}, groups=["Employee"])
+        res = handler.handle_invite_user(evt)
+        assert res["statusCode"] == 403, f"Expected 403, got {res['statusCode']}"
+        print("[PASS] test_invite_employee_forbidden")
+
+
+def test_role_escalation_prevented():
+    """Verify non-admin users cannot change user roles on /team/{id}/role."""
+    with patch.object(handler, "get_effective_role", return_value=({"workspaceId": "ws-1"}, "MANAGER")):
+        evt = make_event("PUT", "/team/target-user-id/role", body={"role": "ADMIN"}, groups=["Manager"])
+        res = handler.handle_change_user_role(evt, "target-user-id")
+        assert res["statusCode"] == 403, f"Expected 403, got {res['statusCode']}"
+        print("[PASS] test_role_escalation_prevented")
+
+
+def test_ensure_default_admin_idempotent():
+    """Verify ensure_default_admin is idempotent when bootstrap admin exists or is created."""
+    mock_cognito = MagicMock()
+    mock_cognito.admin_get_user.return_value = {"Username": "bootstrap-sub-123"}
+    with patch.object(handler, "cognito", mock_cognito), \
+         patch.object(handler, "USER_POOL_ID", "pool-123"), \
+         patch.object(handler, "ensure_workspace") as mock_ensure_ws:
+        handler.ensure_default_admin()
+        mock_cognito.admin_get_user.assert_called_with(UserPoolId="pool-123", Username="teamgate@gmail.com")
+        mock_ensure_ws.assert_called_with("bootstrap-sub-123", "teamgate@gmail.com", initial_role="ADMIN")
+        print("[PASS] test_ensure_default_admin_idempotent")
+
+
 def run_all_unit_tests():
     print("=" * 70)
     print("Running TeamGate Handler Unit Tests (Mocked AWS)")
     print("=" * 70)
-    test_invite_admin_rejected()
+    test_invite_admin_success()
     test_invite_manager_forbidden()
+    test_invite_employee_forbidden()
     test_invite_creation_success()
     test_get_invitation()
     test_accept_invitation_mismatched_email()
     test_accept_invitation_matching_email()
-    test_create_workspace_assigns_admin()
     test_get_team_returns_only_workspace_members()
     test_new_workspace_creator_is_admin()
     test_new_workspace_gets_owner_membership()
     test_new_workspace_isolated_from_existing_workspace()
     test_invited_employee_remains_employee()
     test_invited_manager_remains_manager()
+    test_role_escalation_prevented()
+    test_ensure_default_admin_idempotent()
     print("=" * 70)
-    print("ALL HANDLER UNIT TESTS PASSED SUCCESSFULLY! (13/13)")
+    print("ALL HANDLER UNIT TESTS PASSED SUCCESSFULLY! (15/15)")
     print("=" * 70)
 
 
 if __name__ == "__main__":
     run_all_unit_tests()
+
 

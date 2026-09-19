@@ -13,10 +13,10 @@ As requested by team leadership, Python is incorporated into TeamGate for **Auto
 The Python test suite (`test_security_api.py`) verifies the following security controls:
 
 ### 1. Account Authentication
-Authenticates against AWS Cognito User Pool (`ap-south-1_7I0PAJ4Om`) using the `USER_PASSWORD_AUTH` flow to acquire valid JWT ID tokens for:
-- `ADMIN`: `admin@test.com`
-- `MANAGER`: `manager@test.com`
-- `EMPLOYEE`: `employee@test.com`
+Authenticates against AWS Cognito User Pool using the `USER_PASSWORD_AUTH` flow to acquire valid JWT ID tokens for:
+- `ADMIN`: Configured via `ADMIN_EMAIL` (default: `teamgate@gmail.com`)
+- `MANAGER`: Configured via `MANAGER_EMAIL`
+- `EMPLOYEE`: Configured via `EMPLOYEE_EMAIL`
 
 ### 2. Authorization & HTTP Status Codes
 

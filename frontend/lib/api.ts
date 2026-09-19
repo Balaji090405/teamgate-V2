@@ -349,12 +349,7 @@ export async function acceptInvitation(token: string): Promise<{ message: string
   });
 }
 
-export async function createWorkspace(name: string): Promise<{ message: string; workspaceId: string; role: Role }> {
-  return apiRequest('/workspaces', {
-    method: 'POST',
-    body: JSON.stringify({ name }),
-  });
-}
+
 
 export async function deleteUser(
   userId: string,

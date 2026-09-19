@@ -11,31 +11,45 @@ from botocore.exceptions import ClientError
 TABLE_NAME = os.environ.get("TABLE_NAME", "")
 USER_POOL_ID = os.environ.get("USER_POOL_ID", "")
 DEFAULT_ADMIN_EMAIL = os.environ.get("DEFAULT_ADMIN_EMAIL", "teamgate@gmail.com")
-DEFAULT_ADMIN_PASSWORD = os.environ.get("DEFAULT_ADMIN_PASSWORD", "Teamgateadmin@123")
-DEFAULT_ADMIN_PROVISIONED = False
+BOOTSTRAP_ADMIN_SECRET_ARN = os.environ.get("BOOTSTRAP_ADMIN_SECRET_ARN", "")
 
 dynamodb = boto3.resource("dynamodb")
 table = dynamodb.Table(TABLE_NAME) if TABLE_NAME else None
 cognito = boto3.client("cognito-idp")
+secretsmanager = boto3.client("secretsmanager") if (BOOTSTRAP_ADMIN_SECRET_ARN or os.environ.get("AWS_REGION")) else None
+
+
+def get_bootstrap_admin_password() -> str:
+    """Retrieve the bootstrap admin password from AWS Secrets Manager at runtime."""
+    if BOOTSTRAP_ADMIN_SECRET_ARN and secretsmanager:
+        try:
+            res = secretsmanager.get_secret_value(SecretId=BOOTSTRAP_ADMIN_SECRET_ARN)
+            secret_str = res.get("SecretString", "")
+            if secret_str:
+                try:
+                    data = json.loads(secret_str)
+                    if isinstance(data, dict) and "password" in data:
+                        return data["password"]
+                except json.JSONDecodeError:
+                    return secret_str
+        except Exception as e:
+            print("Secrets Manager fetch error:", e)
+    raise RuntimeError("Bootstrap admin secret could not be retrieved from AWS Secrets Manager.")
 
 
 def ensure_default_admin():
-    global DEFAULT_ADMIN_PROVISIONED
-    if DEFAULT_ADMIN_PROVISIONED:
+    """Ensure default bootstrap admin user exists in Cognito and DynamoDB (idempotent)."""
+    if not USER_POOL_ID or not DEFAULT_ADMIN_EMAIL:
         return
-    if not DEFAULT_ADMIN_EMAIL or not DEFAULT_ADMIN_PASSWORD or not USER_POOL_ID or not TABLE_NAME:
-        return
-
     try:
-        admin_user_sub = None
+        user_id = None
         try:
-            cog_user = cognito.admin_get_user(UserPoolId=USER_POOL_ID, Username=DEFAULT_ADMIN_EMAIL)
-            attrs = {attr["Name"]: attr["Value"] for attr in cog_user.get("UserAttributes", [])}
-            admin_user_sub = attrs.get("sub") or cog_user.get("Username") or DEFAULT_ADMIN_EMAIL
-        except ClientError as err:
-            err_code = err.response.get("Error", {}).get("Code")
-            if err_code in ("UserNotFoundException", "ResourceNotFoundException"):
-                cog_create = cognito.admin_create_user(
+            res = cognito.admin_get_user(UserPoolId=USER_POOL_ID, Username=DEFAULT_ADMIN_EMAIL)
+            user_id = res.get("Username")
+        except ClientError as ce:
+            if ce.response.get("Error", {}).get("Code") == "UserNotFoundException":
+                pwd = get_bootstrap_admin_password()
+                create_res = cognito.admin_create_user(
                     UserPoolId=USER_POOL_ID,
                     Username=DEFAULT_ADMIN_EMAIL,
                     UserAttributes=[
@@ -43,38 +57,29 @@ def ensure_default_admin():
                         {"Name": "email_verified", "Value": "true"},
                     ],
                     MessageAction="SUPPRESS",
+                    TemporaryPassword=pwd,
                 )
-                new_user = cog_create.get("User", {})
-                new_attrs = {attr["Name"]: attr["Value"] for attr in new_user.get("Attributes", [])}
-                admin_user_sub = new_attrs.get("sub") or new_user.get("Username") or DEFAULT_ADMIN_EMAIL
-
-                cognito.admin_set_user_password(
-                    UserPoolId=USER_POOL_ID,
-                    Username=DEFAULT_ADMIN_EMAIL,
-                    Password=DEFAULT_ADMIN_PASSWORD,
-                    Permanent=True,
-                )
+                user_id = create_res.get("User", {}).get("Username") or DEFAULT_ADMIN_EMAIL
+                try:
+                    cognito.admin_set_user_password(
+                        UserPoolId=USER_POOL_ID,
+                        Username=DEFAULT_ADMIN_EMAIL,
+                        Password=pwd,
+                        Permanent=True,
+                    )
+                except Exception as pe:
+                    print("Failed to set permanent password for bootstrap admin:", pe)
             else:
-                print("Error getting default admin user from Cognito:", err)
-                return
+                print("Cognito admin_get_user error:", ce)
 
-        if admin_user_sub:
+        if user_id:
             try:
-                grps = cognito.admin_list_groups_for_user(UserPoolId=USER_POOL_ID, Username=admin_user_sub)
-                g_names = [g.get("GroupName") for g in grps.get("Groups", [])]
-                if "Admin" not in g_names:
-                    cognito.admin_add_user_to_group(UserPoolId=USER_POOL_ID, Username=admin_user_sub, GroupName="Admin")
-            except Exception as e:
-                print("Error setting Admin group for default admin:", e)
-
-            try:
-                ensure_workspace(admin_user_sub, DEFAULT_ADMIN_EMAIL, "ADMIN")
-            except Exception as e:
-                print("Error setting workspace for default admin:", e)
-
-        DEFAULT_ADMIN_PROVISIONED = True
+                cognito.admin_add_user_to_group(UserPoolId=USER_POOL_ID, Username=user_id, GroupName="Admin")
+            except Exception as ge:
+                print("Failed to add default admin to Admin group:", ge)
+            ensure_workspace(user_id, DEFAULT_ADMIN_EMAIL, initial_role="ADMIN")
     except Exception as e:
-        print("Error during default admin provisioning:", e)
+        print("Idempotent ensure_default_admin error:", e)
 
 
 def response(status_code: int, body: dict) -> dict:
@@ -769,7 +774,7 @@ def handle_accept_invitation(event: dict):
             raise
 
         target_role = inv.get("role", "EMPLOYEE")
-        if target_role not in ("ADMIN", "MANAGER", "EMPLOYEE"):
+        if target_role not in ("MANAGER", "EMPLOYEE"):
             target_role = "EMPLOYEE"
 
         timestamp = now_iso()
@@ -789,7 +794,7 @@ def handle_accept_invitation(event: dict):
             }
         )
 
-        cognito_group = "Admin" if target_role == "ADMIN" else ("Manager" if target_role == "MANAGER" else "Employee")
+        cognito_group = "Manager" if target_role == "MANAGER" else "Employee"
         try:
             cognito.admin_add_user_to_group(UserPoolId=USER_POOL_ID, Username=user_id, GroupName=cognito_group)
         except Exception as e:
@@ -806,65 +811,7 @@ def handle_accept_invitation(event: dict):
         return response(500, {"message": f"ERROR: {str(err)}"})
 
 
-def handle_create_workspace(event: dict):
-    user_id = get_user_id(event)
-    email = get_email(event)
-    if not user_id or not email:
-        return response(401, {"message": "Unauthorized."})
 
-    try:
-        body = parse_body(event)
-    except Exception:
-        body = {}
-
-    name = str(body.get("name", "")).strip() or f"{email.split('@')[0]}'s Organization"
-    ws_id = new_id()
-    timestamp = now_iso()
-
-    table.put_item(
-        Item={
-            "PK": f"WORKSPACE#{ws_id}",
-            "SK": "METADATA",
-            "GSI1PK": "WORKSPACE#LIST",
-            "GSI1SK": "METADATA",
-            "entityType": "WORKSPACE",
-            "workspaceId": ws_id,
-            "name": name,
-            "ownerId": user_id,
-            "ownerEmail": email,
-            "createdAt": timestamp,
-            "updatedAt": timestamp,
-        }
-    )
-    table.put_item(
-        Item={
-            "PK": f"WORKSPACE#{ws_id}",
-            "SK": f"MEMBER#{user_id}",
-            "GSI1PK": f"USER#{user_id}",
-            "GSI1SK": f"WORKSPACE#{ws_id}",
-            "entityType": "MEMBER",
-            "workspaceId": ws_id,
-            "userId": user_id,
-            "email": email,
-            "role": "ADMIN",
-            "isOwner": True,
-            "joinedAt": timestamp,
-        }
-    )
-
-    try:
-        cognito.admin_add_user_to_group(UserPoolId=USER_POOL_ID, Username=user_id, GroupName="Admin")
-    except Exception as e:
-        print("Failed to add user to Admin group:", e)
-
-    create_activity(ws_id, user_id, "WORKSPACE_CREATED", ws_id, f'Created workspace "{name}"')
-    return response(201, {
-        "message": "Workspace created successfully.",
-        "workspaceId": ws_id,
-        "name": name,
-        "role": "ADMIN",
-        "isOwner": True,
-    })
 
 
 def handle_delete_user(event: dict, target_user_id: str):
@@ -934,11 +881,6 @@ def handle_get_dashboard(event: dict):
 
 
 def handler(event: dict, context=None):
-    try:
-        ensure_default_admin()
-    except Exception as e:
-        print("ensure_default_admin exception:", e)
-
     http_ctx = event.get("requestContext", {}).get("http", {})
     method = http_ctx.get("method", "")
     raw_path = event.get("rawPath", "")
@@ -962,8 +904,6 @@ def handler(event: dict, context=None):
             return handle_get_team(event)
         if method == "POST" and raw_path == "/team":
             return handle_invite_user(event)
-        if method == "POST" and raw_path == "/workspaces":
-            return handle_create_workspace(event)
         if method == "GET" and raw_path.startswith("/invitations/") and not raw_path.endswith("/accept"):
             raw_token = raw_path[len("/invitations/") :]
             return handle_get_invitation(event, raw_token)

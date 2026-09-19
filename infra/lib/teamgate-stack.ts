@@ -26,6 +26,7 @@ import { HttpJwtAuthorizer } from 'aws-cdk-lib/aws-apigatewayv2-authorizers';
 import { HttpLambdaIntegration } from 'aws-cdk-lib/aws-apigatewayv2-integrations';
 
 import { PolicyStatement } from 'aws-cdk-lib/aws-iam';
+import * as secretsmanager from 'aws-cdk-lib/aws-secretsmanager';
 
 import * as path from 'path';
 
@@ -104,21 +105,7 @@ export class TeamGateStack extends cdk.Stack {
 
         userInvitation: {
           emailSubject: 'Welcome to TeamGate — Your account is ready',
-          emailBody: `Hello,
-
-You have been invited to join TeamGate.
-
-Your login details
-Username: {username}
-Temporary password: {####}
-
-Sign in to TeamGate
-https://teamgate.vercel.app/
-
-When you sign in for the first time, you will be asked to create your own permanent password.
-
-Regards,
-TeamGate Team`,
+          emailBody: 'Hello,\n\nYou have been invited to join TeamGate.\n\nYour login details\nUsername: {username}\nTemporary password: {####}\n\nSign in to TeamGate\nhttps://teamgate.vercel.app/\n\nWhen you sign in for the first time, you will be asked to create your own permanent password.\n\nRegards,\nTeamGate Team',
         },
 
         removalPolicy:
@@ -184,6 +171,21 @@ TeamGate Team`,
     );
 
     /* ---------------------------------------------
+       Secrets Manager (Bootstrap Admin Secret)
+    --------------------------------------------- */
+
+    const adminSecret = new secretsmanager.Secret(this, 'TeamGateAdminSecret', {
+      secretName: 'teamgate/bootstrap-admin',
+      description: 'Bootstrap admin credentials for TeamGate',
+      generateSecretString: {
+        secretStringTemplate: JSON.stringify({ email: 'teamgate@gmail.com' }),
+        generateStringKey: 'password',
+        passwordLength: 16,
+        excludePunctuation: true,
+      },
+    });
+
+    /* ---------------------------------------------
        Lambda
     --------------------------------------------- */
 
@@ -196,10 +198,12 @@ TeamGate Team`,
       environment: {
         TABLE_NAME: table.tableName,
         USER_POOL_ID: userPool.userPoolId,
-        DEFAULT_ADMIN_EMAIL: process.env.DEFAULT_ADMIN_EMAIL || 'teamgate@gmail.com',
-        DEFAULT_ADMIN_PASSWORD: process.env.DEFAULT_ADMIN_PASSWORD || 'Teamgateadmin@123',
+        DEFAULT_ADMIN_EMAIL: 'teamgate@gmail.com',
+        BOOTSTRAP_ADMIN_SECRET_ARN: adminSecret.secretArn,
       },
     });
+
+    adminSecret.grantRead(apiFn);
 
     /* ---------------------------------------------
        DynamoDB permission
@@ -217,11 +221,11 @@ TeamGate Team`,
           'cognito-idp:AdminAddUserToGroup',
           'cognito-idp:AdminRemoveUserFromGroup',
           'cognito-idp:AdminListGroupsForUser',
+          'cognito-idp:AdminGetUser',
+          'cognito-idp:AdminSetUserPassword',
           'cognito-idp:ListUsers',
           'cognito-idp:AdminCreateUser',
           'cognito-idp:AdminDeleteUser',
-          'cognito-idp:AdminSetUserPassword',
-          'cognito-idp:AdminGetUser',
         ],
 
         resources: [
@@ -383,18 +387,6 @@ TeamGate Team`,
 
       methods: [
         HttpMethod.GET,
-      ],
-
-      integration,
-
-      authorizer,
-    });
-
-    httpApi.addRoutes({
-      path: '/workspaces',
-
-      methods: [
-        HttpMethod.POST,
       ],
 
       integration,
