@@ -1,0 +1,22 @@
+@"
+node_modules/
+**/node_modules/
+
+.next/
+**/.next/
+
+.env
+.env.*
+!.env.example
+
+.venv/
+**/.venv/
+
+__pycache__/
+*.pyc
+
+cdk.out/
+**/cdk.out/
+
+.DS_Store
+"@ | Set-Content .gitignore

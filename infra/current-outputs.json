@@ -1,0 +1,8 @@
+{
+  "TeamGateStack": {
+    "UserPoolClientId": "i2v5g1cputpqod4fj2bp7ivah",
+    "TableName": "TeamGateStack-TeamGateTable312B575D-G7BPEQMX9Y2S",
+    "ApiUrl": "https://zodir33jv0.execute-api.ap-south-1.amazonaws.com",
+    "UserPoolId": "ap-south-1_7I0PAJ4Om"
+  }
+}

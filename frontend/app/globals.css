@@ -1,0 +1,213 @@
+@import "tailwindcss";
+
+:root {
+  --bg-main: #f8fafc;
+  --bg-card: #ffffff;
+  --bg-input: #f1f5f9;
+  --bg-sidebar: #ffffff;
+  --bg-active: #0f172a;
+  --text-active: #ffffff;
+  --text-main: #0f172a;
+  --text-secondary: #334155;
+  --text-muted: #64748b;
+  --border-main: #e2e8f0;
+  --accent-color: #6366f1;
+  --accent-light: #e0e7ff;
+  --accent-text: #4338ca;
+}
+
+html.dark {
+  --bg-main: #0b0f19;
+  --bg-card: #131b2e;
+  --bg-input: #1b263b;
+  --bg-sidebar: #0f172a;
+  --bg-active: #3b82f6;
+  --text-active: #ffffff;
+  --text-main: #f8fafc;
+  --text-secondary: #cbd5e1;
+  --text-muted: #94a3b8;
+  --border-main: #27354a;
+  --accent-color: #60a5fa;
+  --accent-light: #1e3a8a;
+  --accent-text: #93c5fd;
+}
+
+html.theme-indigo {
+  --bg-main: #090919;
+  --bg-card: #141438;
+  --bg-input: #1c1c4d;
+  --bg-sidebar: #0d0d2b;
+  --bg-active: #a855f7;
+  --text-active: #ffffff;
+  --text-main: #f5f3ff;
+  --text-secondary: #ddd6fe;
+  --text-muted: #a5b4fc;
+  --border-main: #2e2a72;
+  --accent-color: #c084fc;
+  --accent-light: #3b0764;
+  --accent-text: #e9d5ff;
+}
+
+html.theme-emerald {
+  --bg-main: #021a12;
+  --bg-card: #06382b;
+  --bg-input: #084c3a;
+  --bg-sidebar: #032419;
+  --bg-active: #10b981;
+  --text-active: #ffffff;
+  --text-main: #f0fdf4;
+  --text-secondary: #a7f3d0;
+  --text-muted: #6ee7b7;
+  --border-main: #047857;
+  --accent-color: #34d399;
+  --accent-light: #064e3b;
+  --accent-text: #a7f3d0;
+}
+
+html.theme-amber {
+  --bg-main: #1c120c;
+  --bg-card: #322015;
+  --bg-input: #452b1b;
+  --bg-sidebar: #261810;
+  --bg-active: #f59e0b;
+  --text-active: #ffffff;
+  --text-main: #fff7ed;
+  --text-secondary: #fde68a;
+  --text-muted: #fcd34d;
+  --border-main: #78350f;
+  --accent-color: #fbbf24;
+  --accent-light: #451a03;
+  --accent-text: #fef08a;
+}
+
+html, body {
+  min-height: 100%;
+}
+
+body {
+  margin: 0;
+  background-color: var(--bg-main) !important;
+  color: var(--text-main) !important;
+  font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  transition: background-color 0.25s ease, color 0.25s ease;
+}
+
+/* Force dark color scheme for dark/custom themes */
+html.dark, html.theme-indigo, html.theme-emerald, html.theme-amber {
+  color-scheme: dark;
+}
+
+/* Base backgrounds for layouts & main elements */
+html.dark main, html.theme-indigo main, html.theme-emerald main, html.theme-amber main,
+html.dark .min-h-screen, html.theme-indigo .min-h-screen, html.theme-emerald .min-h-screen, html.theme-amber .min-h-screen {
+  background-color: var(--bg-main);
+  color: var(--text-main);
+}
+
+/* Cards & containers */
+html.dark .bg-white, html.theme-indigo .bg-white, html.theme-emerald .bg-white, html.theme-amber .bg-white,
+html.dark .bg-slate-50, html.theme-indigo .bg-slate-50, html.theme-emerald .bg-slate-50, html.theme-amber .bg-slate-50,
+html.dark .bg-gray-50, html.theme-indigo .bg-gray-50, html.theme-emerald .bg-gray-50, html.theme-amber .bg-gray-50 {
+  background-color: var(--bg-card) !important;
+  color: var(--text-main) !important;
+  border-color: var(--border-main) !important;
+}
+
+/* High contrast Text overrides */
+html.dark .text-gray-900, html.theme-indigo .text-gray-900, html.theme-emerald .text-gray-900, html.theme-amber .text-gray-900,
+html.dark .text-slate-900, html.theme-indigo .text-slate-900, html.theme-emerald .text-slate-900, html.theme-amber .text-slate-900,
+html.dark .text-slate-800, html.theme-indigo .text-slate-800, html.theme-emerald .text-slate-800, html.theme-amber .text-slate-800,
+html.dark .text-gray-800, html.theme-indigo .text-gray-800, html.theme-emerald .text-gray-800, html.theme-amber .text-gray-800,
+html.dark .text-gray-700, html.theme-indigo .text-gray-700, html.theme-emerald .text-gray-700, html.theme-amber .text-gray-700 {
+  color: var(--text-main) !important;
+}
+
+html.dark .text-gray-500, html.theme-indigo .text-gray-500, html.theme-emerald .text-gray-500, html.theme-amber .text-gray-500,
+html.dark .text-slate-500, html.theme-indigo .text-slate-500, html.theme-emerald .text-slate-500, html.theme-amber .text-slate-500,
+html.dark .text-slate-400, html.theme-indigo .text-slate-400, html.theme-emerald .text-slate-400, html.theme-amber .text-slate-400,
+html.dark .text-gray-400, html.theme-indigo .text-gray-400, html.theme-emerald .text-gray-400, html.theme-amber .text-gray-400 {
+  color: var(--text-secondary) !important;
+}
+
+/* Inputs, Selects, Textareas */
+html.dark input, html.theme-indigo input, html.theme-emerald input, html.theme-amber input,
+html.dark select, html.theme-indigo select, html.theme-emerald select, html.theme-amber select,
+html.dark textarea, html.theme-indigo textarea, html.theme-emerald textarea, html.theme-amber textarea {
+  background-color: var(--bg-input) !important;
+  color: var(--text-main) !important;
+  border-color: var(--border-main) !important;
+}
+
+/* Borders */
+html.dark .border-gray-200, html.theme-indigo .border-gray-200, html.theme-emerald .border-gray-200, html.theme-amber .border-gray-200,
+html.dark .border-slate-200, html.theme-indigo .border-slate-200, html.theme-emerald .border-slate-200, html.theme-amber .border-slate-200,
+html.dark .border-gray-300, html.theme-indigo .border-gray-300, html.theme-emerald .border-gray-300, html.theme-amber .border-gray-300,
+html.dark .border-gray-100, html.theme-indigo .border-gray-100, html.theme-emerald .border-gray-100, html.theme-amber .border-gray-100,
+html.dark .border-purple-200, html.theme-indigo .border-purple-200, html.theme-emerald .border-purple-200, html.theme-amber .border-purple-200 {
+  border-color: var(--border-main) !important;
+}
+
+/* Sidebar specific styling */
+aside {
+  background-color: var(--bg-sidebar) !important;
+  border-color: var(--border-main) !important;
+}
+
+/* =========================================================
+   HIGH CONTRAST BADGES & STATUS PILLS FIX
+========================================================= */
+
+html.dark .bg-gray-100, html.theme-indigo .bg-gray-100, html.theme-emerald .bg-gray-100, html.theme-amber .bg-gray-100,
+html.dark .bg-slate-100, html.theme-indigo .bg-slate-100, html.theme-emerald .bg-slate-100, html.theme-amber .bg-slate-100 {
+  background-color: var(--bg-input) !important;
+  color: var(--text-main) !important;
+  border: 1px solid var(--border-main) !important;
+}
+
+html.dark .bg-amber-100, html.theme-indigo .bg-amber-100, html.theme-emerald .bg-amber-100, html.theme-amber .bg-amber-100 {
+  background-color: rgba(245, 158, 11, 0.25) !important;
+  color: #fef08a !important;
+  border: 1px solid rgba(245, 158, 11, 0.5) !important;
+}
+
+html.dark .text-amber-700, html.theme-indigo .text-amber-700, html.theme-emerald .text-amber-700, html.theme-amber .text-amber-700,
+html.dark .text-amber-800, html.theme-indigo .text-amber-800, html.theme-emerald .text-amber-800, html.theme-amber .text-amber-800 {
+  color: #fef08a !important;
+}
+
+html.dark .bg-emerald-100, html.theme-indigo .bg-emerald-100, html.theme-emerald .bg-emerald-100, html.theme-amber .bg-emerald-100,
+html.dark .bg-green-100, html.theme-indigo .bg-green-100, html.theme-emerald .bg-green-100, html.theme-amber .bg-green-100 {
+  background-color: rgba(16, 185, 129, 0.25) !important;
+  color: #a7f3d0 !important;
+  border: 1px solid rgba(16, 185, 129, 0.5) !important;
+}
+
+html.dark .text-green-700, html.theme-indigo .text-green-700, html.theme-emerald .text-green-700, html.theme-amber .text-green-700,
+html.dark .text-green-800, html.theme-indigo .text-green-800, html.theme-emerald .text-green-800, html.theme-amber .text-green-800 {
+  color: #a7f3d0 !important;
+}
+
+html.dark .bg-blue-100, html.theme-indigo .bg-blue-100, html.theme-emerald .bg-blue-100, html.theme-amber .bg-blue-100,
+html.dark .bg-purple-100, html.theme-indigo .bg-purple-100, html.theme-emerald .bg-purple-100, html.theme-amber .bg-purple-100 {
+  background-color: rgba(99, 102, 241, 0.25) !important;
+  color: #c7d2fe !important;
+  border: 1px solid rgba(99, 102, 241, 0.5) !important;
+}
+
+html.dark .text-blue-700, html.theme-indigo .text-blue-700, html.theme-emerald .text-blue-700, html.theme-amber .text-blue-700,
+html.dark .text-purple-700, html.theme-indigo .text-purple-700, html.theme-emerald .text-purple-700, html.theme-amber .text-purple-700,
+html.dark .text-blue-800, html.theme-indigo .text-blue-800, html.theme-emerald .text-blue-800, html.theme-amber .text-blue-800 {
+  color: #c7d2fe !important;
+}
+
+/* =========================================================
+   HOVER STATE FIXES FOR DARK & CUSTOM THEMES
+========================================================= */
+
+html.dark .hover\:bg-slate-50:hover, html.theme-indigo .hover\:bg-slate-50:hover, html.theme-emerald .hover\:bg-slate-50:hover, html.theme-amber .hover\:bg-slate-50:hover,
+html.dark .hover\:bg-gray-50:hover, html.theme-indigo .hover\:bg-gray-50:hover, html.theme-emerald .hover\:bg-gray-50:hover, html.theme-amber .hover\:bg-gray-50:hover,
+html.dark .hover\:bg-slate-100:hover, html.theme-indigo .hover\:bg-slate-100:hover, html.theme-emerald .hover\:bg-slate-100:hover, html.theme-amber .hover\:bg-slate-100:hover,
+html.dark .hover\:bg-gray-100:hover, html.theme-indigo .hover\:bg-gray-100:hover, html.theme-emerald .hover\:bg-gray-100:hover, html.theme-amber .hover\:bg-gray-100:hover {
+  background-color: var(--bg-input) !important;
+  color: var(--text-main) !important;
+}
