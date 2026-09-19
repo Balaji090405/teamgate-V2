@@ -82,7 +82,7 @@ export class TeamGateStack extends cdk.Stack {
       {
         userPoolName: 'teamgate-user-pool',
 
-        selfSignUpEnabled: true,
+        selfSignUpEnabled: false,
 
         signInAliases: {
           email: true,

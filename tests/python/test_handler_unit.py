@@ -192,6 +192,226 @@ def test_accept_invitation_matching_email():
         print("[PASS] test_accept_invitation_matching_email")
 
 
+def test_accept_invitation_admin_role():
+    """Verify that accepting an ADMIN invitation creates a brand new workspace for the invited ADMIN (isOwner = true)."""
+    mock_table = MagicMock()
+    mock_cognito = MagicMock()
+    token_hash = handler.hash_token("test-admin-token")
+    def query_side_effect(**kwargs):
+        if kwargs.get("Limit") == 1:
+            return {
+                "Items": [
+                    {
+                        "PK": "WORKSPACE#ws-1",
+                        "SK": f"INVITATION#{token_hash}",
+                        "status": "PENDING",
+                        "expiresAt": "2099-01-01T00:00:00Z",
+                        "workspaceId": "ws-1",
+                        "invitedEmail": "admininv@example.com",
+                        "role": "ADMIN",
+                    }
+                ]
+            }
+        return {"Items": []}
+
+    mock_table.query.side_effect = query_side_effect
+
+    with patch.object(handler, "table", mock_table), \
+         patch.object(handler, "cognito", mock_cognito), \
+         patch.object(handler, "USER_POOL_ID", "pool-123"), \
+         patch.object(handler, "create_activity"):
+        evt = make_event("POST", "/invitations/accept", body={"token": "test-admin-token"}, sub="user-admin-sub", email="admininv@example.com")
+        res = handler.handle_accept_invitation(evt)
+        assert res["statusCode"] == 200, f"Expected 200, got {res['statusCode']}"
+        body = json.loads(res["body"])
+        assert body["role"] == "ADMIN"
+        assert body["workspaceId"] != "ws-1", "Invited ADMIN must receive a brand new workspace"
+        mock_cognito.admin_add_user_to_group.assert_called_with(
+            UserPoolId="pool-123", Username="user-admin-sub", GroupName="Admin"
+        )
+        print("[PASS] test_accept_invitation_admin_role")
+
+
+def test_scenario_a_first_signup():
+    """Scenario A: First user signs up -> Workspace A created, User = ADMIN, isOwner = true."""
+    mock_table = MagicMock()
+    mock_cognito = MagicMock()
+    mock_table.query.return_value = {"Items": []}
+
+    with patch.object(handler, "table", mock_table), \
+         patch.object(handler, "cognito", mock_cognito), \
+         patch.object(handler, "USER_POOL_ID", "pool-123"):
+        ws = handler.ensure_workspace("user-a-sub", "usera@example.com")
+        assert ws["role"] == "ADMIN"
+        assert ws["isOwner"] is True
+        assert ws["workspaceId"] is not None
+        print("[PASS] test_scenario_a_first_signup")
+
+
+def test_scenario_b_admin_invites_admin():
+    """Scenario B: Admin A invites Admin B. Admin B accepts -> Workspace B created, Admin B = ADMIN/owner (isOwner = true), no access to Workspace A."""
+    mock_table = MagicMock()
+    mock_cognito = MagicMock()
+    mock_cognito.admin_create_user.return_value = {
+        "User": {
+            "Username": "adminb@example.com",
+            "Attributes": [{"Name": "sub", "Value": "user-b-sub"}],
+        }
+    }
+    with patch.object(handler, "get_effective_role", return_value=({"workspaceId": "ws-A"}, "ADMIN")), \
+         patch.object(handler, "table", mock_table), \
+         patch.object(handler, "cognito", mock_cognito), \
+         patch.object(handler, "USER_POOL_ID", "pool-123"), \
+         patch.object(handler, "create_activity"):
+        evt = make_event("POST", "/team", body={"email": "adminb@example.com", "role": "ADMIN"}, groups=["Admin"])
+        res = handler.handle_invite_user(evt)
+        assert res["statusCode"] == 201
+
+        member_calls_for_ws_a = [
+            call for call in mock_table.put_item.call_args_list
+            if call.kwargs.get("Item", {}).get("PK") == "WORKSPACE#ws-A" and call.kwargs.get("Item", {}).get("entityType") == "MEMBER"
+        ]
+        assert len(member_calls_for_ws_a) == 0, "Admin B must NOT be added to Workspace A"
+
+    mock_table_b = MagicMock()
+    mock_table_b.query.return_value = {"Items": []}
+    with patch.object(handler, "table", mock_table_b), \
+         patch.object(handler, "cognito", mock_cognito), \
+         patch.object(handler, "USER_POOL_ID", "pool-123"):
+        ws_b = handler.ensure_workspace("user-b-sub", "adminb@example.com")
+        assert ws_b["role"] == "ADMIN"
+        assert ws_b["isOwner"] is True
+        assert ws_b["workspaceId"] != "ws-A", "Workspace B must be different from Workspace A"
+        print("[PASS] test_scenario_b_admin_invites_admin")
+
+
+def test_scenario_c_admin_invites_manager():
+    """Scenario C: Admin A invites Manager C -> Manager C belongs to Workspace A, role = MANAGER, isOwner = false."""
+    mock_table = MagicMock()
+    mock_cognito = MagicMock()
+    mock_cognito.admin_create_user.return_value = {
+        "User": {
+            "Username": "managerc@example.com",
+            "Attributes": [{"Name": "sub", "Value": "user-c-sub"}],
+        }
+    }
+    with patch.object(handler, "get_effective_role", return_value=({"workspaceId": "ws-A"}, "ADMIN")), \
+         patch.object(handler, "table", mock_table), \
+         patch.object(handler, "cognito", mock_cognito), \
+         patch.object(handler, "USER_POOL_ID", "pool-123"), \
+         patch.object(handler, "create_activity"):
+        evt = make_event("POST", "/team", body={"email": "managerc@example.com", "role": "MANAGER"}, groups=["Admin"])
+        res = handler.handle_invite_user(evt)
+        assert res["statusCode"] == 201
+
+        put_item_call = [
+            call for call in mock_table.put_item.call_args_list
+            if call.kwargs.get("Item", {}).get("entityType") == "MEMBER"
+        ][0]
+        item = put_item_call.kwargs["Item"]
+        assert item["PK"] == "WORKSPACE#ws-A"
+        assert item["role"] == "MANAGER"
+        assert item["isOwner"] is False
+        print("[PASS] test_scenario_c_admin_invites_manager")
+
+
+def test_scenario_d_admin_invites_employee():
+    """Scenario D: Admin A invites Employee D -> Employee D belongs to Workspace A, role = EMPLOYEE, isOwner = false."""
+    mock_table = MagicMock()
+    mock_cognito = MagicMock()
+    mock_cognito.admin_create_user.return_value = {
+        "User": {
+            "Username": "employeed@example.com",
+            "Attributes": [{"Name": "sub", "Value": "user-d-sub"}],
+        }
+    }
+    with patch.object(handler, "get_effective_role", return_value=({"workspaceId": "ws-A"}, "ADMIN")), \
+         patch.object(handler, "table", mock_table), \
+         patch.object(handler, "cognito", mock_cognito), \
+         patch.object(handler, "USER_POOL_ID", "pool-123"), \
+         patch.object(handler, "create_activity"):
+        evt = make_event("POST", "/team", body={"email": "employeed@example.com", "role": "EMPLOYEE"}, groups=["Admin"])
+        res = handler.handle_invite_user(evt)
+        assert res["statusCode"] == 201
+
+        put_item_call = [
+            call for call in mock_table.put_item.call_args_list
+            if call.kwargs.get("Item", {}).get("entityType") == "MEMBER"
+        ][0]
+        item = put_item_call.kwargs["Item"]
+        assert item["PK"] == "WORKSPACE#ws-A"
+        assert item["role"] == "EMPLOYEE"
+        assert item["isOwner"] is False
+        print("[PASS] test_scenario_d_admin_invites_employee")
+
+
+def test_scenario_e_admin_b_invites_manager():
+    """Scenario E: Admin B invites Manager E -> Manager E belongs to Workspace B, NOT Workspace A."""
+    mock_table = MagicMock()
+    mock_cognito = MagicMock()
+    mock_cognito.admin_create_user.return_value = {
+        "User": {
+            "Username": "managere@example.com",
+            "Attributes": [{"Name": "sub", "Value": "user-e-sub"}],
+        }
+    }
+    with patch.object(handler, "get_effective_role", return_value=({"workspaceId": "ws-B"}, "ADMIN")), \
+         patch.object(handler, "table", mock_table), \
+         patch.object(handler, "cognito", mock_cognito), \
+         patch.object(handler, "USER_POOL_ID", "pool-123"), \
+         patch.object(handler, "create_activity"):
+        evt = make_event("POST", "/team", body={"email": "managere@example.com", "role": "MANAGER"}, groups=["Admin"])
+        res = handler.handle_invite_user(evt)
+        assert res["statusCode"] == 201
+
+        put_item_call = [
+            call for call in mock_table.put_item.call_args_list
+            if call.kwargs.get("Item", {}).get("entityType") == "MEMBER"
+        ][0]
+        item = put_item_call.kwargs["Item"]
+        assert item["PK"] == "WORKSPACE#ws-B", "Manager E must belong to Workspace B, NOT Workspace A"
+        assert item["role"] == "MANAGER"
+        assert item["isOwner"] is False
+        print("[PASS] test_scenario_e_admin_b_invites_manager")
+
+
+def test_scenario_f_admin_b_invites_admin_f():
+    """Scenario F: Admin B invites Admin F -> Workspace C created for Admin F, owner of Workspace C (isOwner = true), no access to Workspace A or B."""
+    mock_table = MagicMock()
+    mock_cognito = MagicMock()
+    mock_cognito.admin_create_user.return_value = {
+        "User": {
+            "Username": "adminf@example.com",
+            "Attributes": [{"Name": "sub", "Value": "user-f-sub"}],
+        }
+    }
+    with patch.object(handler, "get_effective_role", return_value=({"workspaceId": "ws-B"}, "ADMIN")), \
+         patch.object(handler, "table", mock_table), \
+         patch.object(handler, "cognito", mock_cognito), \
+         patch.object(handler, "USER_POOL_ID", "pool-123"), \
+         patch.object(handler, "create_activity"):
+        evt = make_event("POST", "/team", body={"email": "adminf@example.com", "role": "ADMIN"}, groups=["Admin"])
+        res = handler.handle_invite_user(evt)
+        assert res["statusCode"] == 201
+
+        member_calls = [
+            call for call in mock_table.put_item.call_args_list
+            if call.kwargs.get("Item", {}).get("entityType") == "MEMBER"
+        ]
+        assert len(member_calls) == 0, "Admin F must NOT be added to Workspace B"
+
+    mock_table_f = MagicMock()
+    mock_table_f.query.return_value = {"Items": []}
+    with patch.object(handler, "table", mock_table_f), \
+         patch.object(handler, "cognito", mock_cognito), \
+         patch.object(handler, "USER_POOL_ID", "pool-123"):
+        ws_c = handler.ensure_workspace("user-f-sub", "adminf@example.com")
+        assert ws_c["role"] == "ADMIN"
+        assert ws_c["isOwner"] is True
+        assert ws_c["workspaceId"] not in ("ws-A", "ws-B"), "Workspace C must be separate from Workspace A and B"
+        print("[PASS] test_scenario_f_admin_b_invites_admin_f")
+
+
 def test_get_team_returns_only_workspace_members():
     """Verify GET /team queries DynamoDB for workspace members and excludes non-workspace users."""
     mock_table = MagicMock()
@@ -386,6 +606,7 @@ def run_all_unit_tests():
     test_get_invitation()
     test_accept_invitation_mismatched_email()
     test_accept_invitation_matching_email()
+    test_accept_invitation_admin_role()
     test_get_team_returns_only_workspace_members()
     test_new_workspace_creator_is_admin()
     test_new_workspace_gets_owner_membership()
@@ -394,8 +615,14 @@ def run_all_unit_tests():
     test_invited_manager_remains_manager()
     test_role_escalation_prevented()
     test_ensure_default_admin_idempotent()
+    test_scenario_a_first_signup()
+    test_scenario_b_admin_invites_admin()
+    test_scenario_c_admin_invites_manager()
+    test_scenario_d_admin_invites_employee()
+    test_scenario_e_admin_b_invites_manager()
+    test_scenario_f_admin_b_invites_admin_f()
     print("=" * 70)
-    print("ALL HANDLER UNIT TESTS PASSED SUCCESSFULLY! (15/15)")
+    print("ALL HANDLER UNIT TESTS PASSED SUCCESSFULLY! (22/22)")
     print("=" * 70)
 
 

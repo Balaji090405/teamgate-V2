@@ -82,13 +82,17 @@ export default function Sidebar({
         type="button"
         onClick={handleToggle}
         aria-label={isOpen ? 'Close sidebar' : 'Open sidebar'}
-        className={`fixed left-5 top-6 z-50 flex h-[52px] w-[52px] items-center justify-center rounded-[16px] bg-black text-xl font-semibold text-white shadow-md transition-all duration-300 ${
+        className={`fixed top-6 z-50 flex h-[52px] w-[52px] items-center justify-center rounded-[16px] bg-white p-1 border border-slate-200/80 shadow-sm transition-all duration-300 hover:scale-105 ${
           isOpen
-            ? 'left-[31px]'
+            ? 'left-[28px]'
             : 'left-5'
         }`}
       >
-        T
+        <img
+          src="/logo.png"
+          alt="TeamGate Logo"
+          className="h-full w-full object-contain"
+        />
       </button>
 
       {/* Sidebar */}
@@ -102,9 +106,7 @@ export default function Sidebar({
         {/* Header */}
         <div className="flex h-[101px] min-w-[318px] items-center border-b border-gray-200 px-7">
           <div className="flex items-center gap-4">
-            <div className="flex h-[52px] w-[52px] items-center justify-center rounded-[16px] bg-black text-xl font-semibold text-white opacity-0">
-              T
-            </div>
+            <div className="h-[52px] w-[52px] shrink-0" />
 
             <div>
               <h1 className="text-[23px] font-semibold tracking-tight text-slate-900">

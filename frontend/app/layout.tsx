@@ -4,6 +4,9 @@ import './globals.css';
 export const metadata: Metadata = {
   title: 'TeamGate',
   description: 'Role-based project tracker',
+  icons: {
+    icon: '/logo.png',
+  },
 };
 
 const themeScript = `

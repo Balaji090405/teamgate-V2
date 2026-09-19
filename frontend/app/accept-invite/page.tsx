@@ -119,9 +119,11 @@ function AcceptInviteContent() {
     <div className="flex min-h-screen items-center justify-center bg-slate-50 p-4">
       <div className="w-full max-w-md rounded-2xl border border-slate-200 bg-white p-8 shadow-xl">
         <div className="mb-6 text-center">
-          <div className="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-xl bg-indigo-600 text-xl font-bold text-white shadow-md">
-            T
-          </div>
+          <img
+            src="/logo.png"
+            alt="TeamGate Logo"
+            className="mx-auto mb-3 h-12 w-12 rounded-xl bg-white p-1 object-contain shadow-md"
+          />
           <h1 className="text-2xl font-semibold tracking-tight text-slate-900">
             Workspace Invitation
           </h1>
@@ -164,13 +166,13 @@ function AcceptInviteContent() {
             {!isAuthenticated ? (
               <div className="space-y-3 text-center">
                 <p className="text-sm text-slate-600">
-                  Please sign in or create an account with <strong>{invitation.invitedEmail}</strong> to accept this invitation.
+                  Please sign in with <strong>{invitation.invitedEmail}</strong> to accept this invitation.
                 </p>
                 <button
                   onClick={handleLoginRedirect}
                   className="w-full rounded-xl bg-slate-900 px-5 py-3 text-sm font-semibold text-white transition hover:bg-slate-800"
                 >
-                  Sign In / Sign Up
+                  Sign In
                 </button>
               </div>
             ) : userEmail?.toLowerCase() === invitation.invitedEmail.toLowerCase() ? (

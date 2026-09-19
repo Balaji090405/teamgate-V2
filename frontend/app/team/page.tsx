@@ -489,6 +489,7 @@ export default function TeamPage() {
                     onChange={(e) => setInviteRole(e.target.value as Role)}
                     className="w-full rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm text-slate-900 outline-none focus:border-slate-400"
                   >
+                    <option value="ADMIN">ADMIN</option>
                     <option value="MANAGER">MANAGER</option>
                     <option value="EMPLOYEE">EMPLOYEE</option>
                   </select>

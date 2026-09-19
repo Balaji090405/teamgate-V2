@@ -656,23 +656,24 @@ def handle_invite_user(event: dict):
         print("Failed to add invited user to Cognito group:", err)
 
     timestamp = now_iso()
-    member_item = {
-        "PK": f"WORKSPACE#{ws['workspaceId']}",
-        "SK": f"MEMBER#{cognito_sub}",
-        "GSI1PK": f"USER#{cognito_sub}",
-        "GSI1SK": f"WORKSPACE#{ws['workspaceId']}",
-        "entityType": "MEMBER",
-        "workspaceId": ws["workspaceId"],
-        "userId": cognito_sub,
-        "email": invite_email,
-        "role": invite_role,
-        "isOwner": False,
-        "joinedAt": timestamp,
-    }
-    if invite_name:
-        member_item["name"] = invite_name
+    if invite_role != "ADMIN":
+        member_item = {
+            "PK": f"WORKSPACE#{ws['workspaceId']}",
+            "SK": f"MEMBER#{cognito_sub}",
+            "GSI1PK": f"USER#{cognito_sub}",
+            "GSI1SK": f"WORKSPACE#{ws['workspaceId']}",
+            "entityType": "MEMBER",
+            "workspaceId": ws["workspaceId"],
+            "userId": cognito_sub,
+            "email": invite_email,
+            "role": invite_role,
+            "isOwner": False,
+            "joinedAt": timestamp,
+        }
+        if invite_name:
+            member_item["name"] = invite_name
 
-    table.put_item(Item=member_item)
+        table.put_item(Item=member_item)
 
     create_activity(ws["workspaceId"], user_id, "USER_INVITED", cognito_sub, f"Sent invitation to {invite_email} as {invite_role}")
 
@@ -774,37 +775,44 @@ def handle_accept_invitation(event: dict):
             raise
 
         target_role = inv.get("role", "EMPLOYEE")
-        if target_role not in ("MANAGER", "EMPLOYEE"):
+        if target_role not in ("ADMIN", "MANAGER", "EMPLOYEE"):
             target_role = "EMPLOYEE"
 
         timestamp = now_iso()
-        table.put_item(
-            Item={
-                "PK": f"WORKSPACE#{ws_id}",
-                "SK": f"MEMBER#{user_id}",
-                "GSI1PK": f"USER#{user_id}",
-                "GSI1SK": f"WORKSPACE#{ws_id}",
-                "entityType": "MEMBER",
-                "workspaceId": ws_id,
-                "userId": user_id,
-                "email": auth_email,
-                "role": target_role,
-                "isOwner": False,
-                "joinedAt": timestamp,
-            }
-        )
+        if target_role == "ADMIN":
+            user_ws = ensure_workspace(user_id, auth_email)
+            target_ws_id = user_ws["workspaceId"]
+            return_role = "ADMIN"
+        else:
+            target_ws_id = ws_id
+            return_role = target_role
+            table.put_item(
+                Item={
+                    "PK": f"WORKSPACE#{ws_id}",
+                    "SK": f"MEMBER#{user_id}",
+                    "GSI1PK": f"USER#{user_id}",
+                    "GSI1SK": f"WORKSPACE#{ws_id}",
+                    "entityType": "MEMBER",
+                    "workspaceId": ws_id,
+                    "userId": user_id,
+                    "email": auth_email,
+                    "role": target_role,
+                    "isOwner": False,
+                    "joinedAt": timestamp,
+                }
+            )
 
-        cognito_group = "Manager" if target_role == "MANAGER" else "Employee"
+        cognito_group = "Admin" if target_role == "ADMIN" else ("Manager" if target_role == "MANAGER" else "Employee")
         try:
             cognito.admin_add_user_to_group(UserPoolId=USER_POOL_ID, Username=user_id, GroupName=cognito_group)
         except Exception as e:
             print("Failed to add user to Cognito group during invite acceptance:", e)
 
-        create_activity(ws_id, user_id, "INVITATION_ACCEPTED", user_id, f"{auth_email} accepted invitation as {target_role}")
+        create_activity(target_ws_id, user_id, "INVITATION_ACCEPTED", user_id, f"{auth_email} accepted invitation as {target_role}")
         return response(200, {
             "message": "Invitation accepted successfully.",
-            "workspaceId": ws_id,
-            "role": target_role,
+            "workspaceId": target_ws_id,
+            "role": return_role,
         })
     except Exception as err:
         print(f"Exception in handle_accept_invitation: {err}")
