@@ -19,3 +19,5 @@ cdk.out/
 **/cdk.out/
 
 .DS_Store
+
+*.tsbuildinfo
