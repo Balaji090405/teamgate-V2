@@ -6,7 +6,7 @@ TeamGate is a serverless, role-based project tracker built for managing project 
 
 ## Live Links & Repository
 
-- **Live Application**: [https://teamgate.vercel.app/](https://teamgate.vercel.app/)
+- **Live Application**: [https://teamgate-v2-mu.vercel.app/](https://teamgate-v2-mu.vercel.app/)
 - **API Base URL**: `https://zodir33jv0.execute-api.ap-south-1.amazonaws.com`
 - **GitHub Repository**: [https://github.com/Balaji090405/teamgate](https://github.com/Balaji090405/teamgate)
 - **AWS Region**: `ap-south-1`

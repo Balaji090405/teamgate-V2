@@ -105,7 +105,7 @@ export class TeamGateStack extends cdk.Stack {
 
         userInvitation: {
           emailSubject: 'Welcome to TeamGate — Your account is ready',
-          emailBody: 'Hello,\n\nYou have been invited to join TeamGate.\n\nYour login details\nUsername: {username}\nTemporary password: {####}\n\nSign in to TeamGate\nhttps://teamgate.vercel.app/\n\nWhen you sign in for the first time, you will be asked to create your own permanent password.\n\nRegards,\nTeamGate Team',
+          emailBody: 'Hello,\n\nYou have been invited to join TeamGate.\n\nYour login details\nUsername: {username}\nTemporary password: {####}\n\nSign in to TeamGate\nhttps://teamgate-v2-mu.vercel.app/\n\nWhen you sign in for the first time, you will be asked to create your own permanent password.\n\nRegards,\nTeamGate Team',
         },
 
         removalPolicy:
